@@ -1,0 +1,12 @@
+{
+  "name": "scanline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scanline — AI resume screener, builder, optimizer, and ATS checker",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@vercel/kv": "^1.0.1"
+  }
+}
