@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Scanline — AI Resume Screener</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+</head>
+<body style="margin:0;background:#0B0D11;padding:0;min-height:100vh;">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --shell: #14171C;
+  --shell-2: #1B1F27;
+  --shell-3: #232833;
+  --line: #2E3542;
+  --paper: #EEEAE0;
+  --paper-2: #E4DFD0;
+  --ink: #201C16;
+  --ink-soft: #6B6558;
+  --hit: #F4C94A;
+  --miss: #D4664F;
+  --accent: #3C8A94;
+  --accent-soft: #2A6169;
+  --stamp: #B0472A;
+  --text-lo: #8890A0;
+  --text-hi: #ECEEF2;
+}
+
+body { margin: 0; background: var(--shell); }
+
+.sl-root {
+  --shell: #14171C;
+  --shell-2: #1B1F27;
+  --shell-3: #232833;
+  --line: #2E3542;
+  --paper: #EEEAE0;
+  --paper-2: #E4DFD0;
+  --ink: #201C16;
+  --ink-soft: #6B6558;
+  --hit: #F4C94A;
+  --miss: #D4664F;
+  --accent: #3C8A94;
+  --accent-soft: #2A6169;
+  --stamp: #B0472A;
+  --text-lo: #8890A0;
+  --text-hi: #ECEEF2;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-hi);
+  background: var(--shell);
+  min-height: 100vh;
+  display: flex;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.sl-root * { box-sizing: border-box; }
+
+/* ---------- SIDEBAR ---------- */
+.sl-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--shell-2);
+  border-right: 1px solid var(--line);
+  padding: 22px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.sl-logo { display: flex; align-items: center; gap: 9px; padding: 0 4px; }
+.sl-logo-mark {
+  width: 22px; height: 22px; position: relative; flex-shrink: 0;
+  border: 1.5px solid var(--hit);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.sl-logo-mark::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 45%;
+  height: 2px; background: var(--hit);
+  box-shadow: 0 0 6px var(--hit);
+  animation: slscan 2.2s linear infinite;
+}
+@keyframes slscan { 0% { top: 0%; } 100% { top: 96%; } }
+.sl-logo-text { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 15px; letter-spacing: 0.02em; }
+.sl-logo-text span { color: var(--hit); }
+
+.sl-nav { display: flex; flex-direction: column; gap: 4px; }
+.sl-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 6px;
+  font-size: 13.5px; font-weight: 500; color: var(--text-lo);
+  cursor: pointer; border: 1px solid transparent;
+  transition: all .15s ease;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.sl-nav-item:hover { color: var(--text-hi); background: var(--shell-3); }
+.sl-nav-item.active {
+  color: var(--text-hi); background: var(--shell-3);
+  border-color: var(--line);
+}
+.sl-nav-item .n { color: var(--text-lo); font-size: 11px; width: 16px; }
+.sl-nav-item.active .n { color: var(--hit); }
+
+.sl-sidebar-foot {
+  margin-top: auto; font-size: 11px; color: var(--text-lo);
+  font-family: 'IBM Plex Mono', monospace; line-height: 1.6;
+  padding: 10px 4px; border-top: 1px solid var(--line);
+}
+
+/* ---------- MAIN ---------- */
+.sl-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 720px; }
+.sl-main-row { flex: 1; display: flex; min-width: 0; min-height: 0; }
+
+.sl-flowbar {
+  display: flex; align-items: center; gap: 0;
+  padding: 14px 24px; border-bottom: 1px solid var(--line);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.sl-flow-step { display: flex; align-items: center; gap: 9px; }
+.sl-flow-dot {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line);
+  color: var(--text-lo); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; flex-shrink: 0; transition: all .2s ease;
+}
+.sl-flow-label { font-size: 11.5px; color: var(--text-lo); white-space: nowrap; transition: color .2s ease; }
+.sl-flow-step.done .sl-flow-dot { border-color: var(--accent); color: var(--accent); background: rgba(60,138,148,0.1); }
+.sl-flow-step.done .sl-flow-label { color: var(--text-hi); }
+.sl-flow-step.active .sl-flow-dot { border-color: var(--hit); color: var(--hit); background: rgba(244,201,74,0.12); box-shadow: 0 0 0 3px rgba(244,201,74,0.1); }
+.sl-flow-step.active .sl-flow-label { color: var(--text-hi); font-weight: 600; }
+.sl-flow-line { width: 34px; height: 1px; background: var(--line); margin: 0 10px; transition: background .2s ease; }
+.sl-flow-line.done { background: var(--accent); }
+
+/* ---------- NEXT-STEP NUDGE ---------- */
+.sl-next-nudge {
+  margin-top: 16px; padding: 14px; border-radius: 8px;
+  background: rgba(244,201,74,0.08); border: 1px solid rgba(244,201,74,0.3);
+}
+.sl-next-nudge .nn-label {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--hit);
+  letter-spacing: 0.06em; margin-bottom: 8px;
+}
+.sl-next-nudge button {
+  width: 100%; padding: 10px; border-radius: 6px; border: none;
+  background: var(--hit); color: var(--ink); font-weight: 600; font-size: 12.5px;
+  cursor: pointer; font-family: 'IBM Plex Mono', monospace;
+}
+.sl-next-nudge button:hover { background: #ffd968; }
+.sl-panel {
+  width: 380px; flex-shrink: 0;
+  padding: 24px 22px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  max-height: 720px;
+}
+.sl-panel h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+.sl-panel .sl-sub { font-size: 12px; color: var(--text-lo); margin: 0 0 20px; line-height: 1.5; }
+
+.sl-field { margin-bottom: 14px; }
+.sl-field label {
+  display: block; font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-lo); margin-bottom: 6px; letter-spacing: 0.02em;
+}
+.sl-field input, .sl-field textarea {
+  width: 100%; background: var(--shell-3); border: 1px solid var(--line);
+  border-radius: 5px; padding: 9px 10px; color: var(--text-hi);
+  font-family: 'Inter', sans-serif; font-size: 13px; resize: vertical;
+}
+.sl-field textarea { min-height: 70px; line-height: 1.5; }
+.sl-field input:focus, .sl-field textarea:focus {
+  outline: none; border-color: var(--accent);
+}
+.sl-row { display: flex; gap: 10px; }
+.sl-row .sl-field { flex: 1; }
+
+.sl-btn {
+  width: 100%; padding: 11px; border-radius: 6px; border: none;
+  background: var(--accent); color: #fff; font-weight: 600; font-size: 13px;
+  cursor: pointer; margin-top: 4px; transition: background .15s ease;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.sl-btn:hover { background: var(--accent-soft); }
+.sl-btn:disabled { background: var(--shell-3); color: var(--text-lo); cursor: not-allowed; }
+.sl-btn-ghost {
+  background: transparent; border: 1px solid var(--line); color: var(--text-lo);
+  width: 100%; padding: 8px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; margin-top: 8px;
+}
+.sl-btn-ghost:hover { color: var(--text-hi); border-color: var(--accent); }
+
+.sl-list { margin: 10px 0 16px; padding: 0; list-style: none; }
+.sl-list li {
+  display: flex; gap: 8px; font-size: 12.5px; color: var(--text-lo);
+  margin-bottom: 8px; line-height: 1.5; align-items: flex-start;
+}
+.sl-list li::before { content: '→'; color: var(--accent); flex-shrink: 0; }
+
+/* ---------- PAPER (document stage) ---------- */
+.sl-stage {
+  flex: 1; background: var(--shell); padding: 28px;
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto; max-height: 720px; position: relative;
+}
+.sl-paper {
+  width: 100%; max-width: 560px; background: var(--paper);
+  border-radius: 2px; padding: 40px 44px 44px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  font-family: 'Source Serif 4', Georgia, serif; color: var(--ink);
+  position: relative; min-height: 600px;
+}
+.sl-paper.scanning::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: slsweep 1.4s ease-in-out infinite;
+}
+@keyframes slsweep { 0% { top: 0; } 100% { top: 100%; } }
+
+.sl-p-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 520px; color: var(--ink-soft); font-family: 'Inter', sans-serif;
+  text-align: center; gap: 10px;
+}
+.sl-p-empty .big { font-size: 13px; font-weight: 600; color: var(--ink); }
+.sl-p-empty .small { font-size: 12px; max-width: 260px; line-height: 1.6; }
+
+.sl-p-name { font-size: 24px; font-weight: 700; margin: 0 0 2px; letter-spacing: -0.01em; }
+.sl-p-title { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--accent-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.sl-p-contact { font-family: 'Inter', sans-serif; font-size: 11.5px; color: var(--ink-soft); margin-bottom: 18px; }
+.sl-p-hr { border: none; border-top: 1px solid var(--paper-2); margin: 16px 0; }
+.sl-p-h { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 10px; }
+.sl-p-summary { font-size: 13px; line-height: 1.65; margin: 0 0 6px; }
+.sl-p-role { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 600; margin-top: 12px; }
+.sl-p-role-meta { font-family: 'Inter', sans-serif; font-size: 11.5px; color: var(--ink-soft); font-weight: 400; }
+.sl-p-company { font-family: 'Inter', sans-serif; font-size: 12.5px; font-style: italic; color: var(--ink-soft); margin-bottom: 4px; }
+.sl-p-bullets { margin: 4px 0 0; padding-left: 16px; font-size: 12.5px; line-height: 1.6; }
+.sl-p-bullets li { margin-bottom: 3px; }
+.sl-p-skills { display: flex; flex-wrap: wrap; gap: 6px; }
+.sl-p-skill { font-family: 'Inter', sans-serif; font-size: 11px; background: var(--paper-2); padding: 3px 9px; border-radius: 20px; color: var(--ink); }
+.sl-p-edu { font-size: 12.5px; margin-bottom: 6px; }
+.sl-p-edu b { font-size: 13px; }
+
+mark.sl-hit { background: var(--hit); padding: 0 2px; border-radius: 2px; color: var(--ink); }
+
+/* ---------- SCORE STAMP ---------- */
+.sl-stamp {
+  position: absolute; top: 30px; right: 30px;
+  width: 92px; height: 92px; border-radius: 50%;
+  border: 3px solid var(--stamp); color: var(--stamp);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: 'IBM Plex Mono', monospace; transform: rotate(-8deg);
+  background: rgba(176,71,42,0.04);
+  animation: slstamp .35s cubic-bezier(.2,1.4,.4,1);
+}
+@keyframes slstamp { 0% { transform: rotate(-8deg) scale(1.8); opacity: 0; } 100% { transform: rotate(-8deg) scale(1); opacity: 1; } }
+.sl-stamp .sc { font-size: 26px; font-weight: 600; line-height: 1; }
+.sl-stamp .lb { font-size: 8px; letter-spacing: 0.06em; margin-top: 2px; }
+
+.sl-kw-block { margin-top: 18px; }
+.sl-kw-title { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--text-lo); margin-bottom: 8px; letter-spacing: 0.04em; }
+.sl-kw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sl-chip { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; }
+.sl-chip.hit { background: rgba(244,201,74,0.15); color: var(--hit); border: 1px solid rgba(244,201,74,0.3); }
+.sl-chip.miss { background: rgba(212,102,79,0.12); color: var(--miss); border: 1px solid rgba(212,102,79,0.3); }
+
+.sl-error { font-size: 12px; color: var(--miss); margin-top: 10px; line-height: 1.5; }
+
+/* ---------- UPLOAD DROPZONE ---------- */
+.sl-drop {
+  border: 1.5px dashed var(--line); border-radius: 7px;
+  padding: 16px 12px; text-align: center; cursor: pointer;
+  margin-bottom: 14px; transition: all .15s ease; position: relative;
+}
+.sl-drop:hover, .sl-drop.drag { border-color: var(--accent); background: rgba(60,138,148,0.06); }
+.sl-drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.sl-drop .dt { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-hi); font-weight: 500; }
+.sl-drop .ds { font-size: 11px; color: var(--text-lo); margin-top: 3px; }
+.sl-drop.ok { border-color: var(--accent); border-style: solid; }
+.sl-drop.busy { border-color: var(--hit); border-style: solid; }
+.sl-divider { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; }
+.sl-divider::before, .sl-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.sl-divider span { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-lo); }
+
+/* ================= LANDING PAGE ================= */
+.lp-page { font-family: 'Inter', sans-serif; color: var(--text-hi); }
+.lp-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 6vw; max-width: 1200px; margin: 0 auto;
+}
+.lp-nav-actions { display: flex; gap: 10px; align-items: center; }
+.lp-btn-ghost-sm {
+  background: transparent; border: 1px solid var(--line); color: var(--text-hi);
+  padding: 9px 16px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-weight: 500;
+}
+.lp-btn-ghost-sm:hover { border-color: var(--accent); }
+.lp-btn-solid {
+  background: var(--hit); border: none; color: var(--ink);
+  padding: 10px 18px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600;
+}
+.lp-btn-solid:hover { background: #ffd968; }
+.lp-btn-solid-lg { padding: 14px 26px; font-size: 14.5px; border-radius: 7px; }
+.lp-btn-outline-lg {
+  background: transparent; border: 1px solid var(--line); color: var(--text-hi);
+  padding: 14px 26px; border-radius: 7px; font-size: 14.5px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-weight: 500;
+}
+.lp-btn-outline-lg:hover { border-color: var(--accent); }
+
+.lp-hero {
+  display: flex; align-items: center; gap: 60px;
+  max-width: 1200px; margin: 0 auto; padding: 60px 6vw 90px;
+}
+.lp-hero-copy { flex: 1; min-width: 0; }
+.lp-eyebrow {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--hit);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.lp-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--hit); box-shadow: 0 0 8px var(--hit); }
+.lp-h1 {
+  font-family: 'Source Serif 4', Georgia, serif; font-size: 48px; font-weight: 700;
+  line-height: 1.1; letter-spacing: -0.01em; margin: 0 0 20px; max-width: 620px;
+}
+.lp-h1 em { font-style: italic; color: var(--hit); }
+.lp-sub { font-size: 16px; color: var(--text-lo); line-height: 1.65; max-width: 460px; margin: 0 0 30px; }
+.lp-cta-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.lp-cta-note { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-lo); margin-top: 14px; }
+
+.lp-hero-visual { flex: 1; display: flex; justify-content: center; position: relative; min-width: 0; }
+.lp-mock-paper {
+  width: 300px; background: var(--paper); border-radius: 3px; padding: 26px 26px 30px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5); transform: rotate(2deg);
+  font-family: 'Source Serif 4', serif; color: var(--ink); position: relative;
+}
+.lp-mock-paper .mn { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+.lp-mock-paper .mt { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--accent-soft); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+.lp-mock-paper .ml { height: 7px; background: var(--paper-2); border-radius: 2px; margin-bottom: 7px; }
+.lp-mock-paper .ml.w60 { width: 60%; } .lp-mock-paper .ml.w80 { width: 80%; } .lp-mock-paper .ml.w40 { width: 40%; }
+.lp-mock-paper mark { background: var(--hit); padding: 0 2px; border-radius: 1px; }
+.lp-mock-stamp {
+  position: absolute; top: 20px; right: 20px; width: 62px; height: 62px; border-radius: 50%;
+  border: 2.5px solid var(--stamp); color: var(--stamp); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace;
+  transform: rotate(-8deg); background: rgba(176,71,42,0.05);
+}
+.lp-mock-stamp .sc { font-size: 17px; font-weight: 700; line-height: 1; }
+.lp-mock-stamp .lb { font-size: 6px; letter-spacing: 0.05em; margin-top: 1px; }
+.lp-mock-tag {
+  position: absolute; background: var(--shell-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 11px; font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px; color: var(--text-hi); box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.lp-mock-tag.t1 { top: 44px; left: -36px; }
+.lp-mock-tag.t2 { bottom: 30px; right: -30px; }
+.lp-mock-tag .k { color: var(--hit); }
+
+.lp-section { max-width: 1200px; margin: 0 auto; padding: 70px 6vw; }
+.lp-section-head { text-align: center; max-width: 560px; margin: 0 auto 44px; }
+.lp-section-head h2 {
+  font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin: 0 0 12px;
+}
+.lp-section-head p { color: var(--text-lo); font-size: 14.5px; line-height: 1.6; margin: 0; }
+
+.lp-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+.lp-feature {
+  background: var(--shell-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 24px 20px;
+}
+.lp-feature .fi {
+  width: 34px; height: 34px; border-radius: 8px; background: var(--shell-3);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--hit); font-weight: 600;
+}
+.lp-feature h3 { font-size: 14.5px; font-weight: 600; margin: 0 0 8px; }
+.lp-feature p { font-size: 12.5px; color: var(--text-lo); line-height: 1.6; margin: 0; }
+
+.lp-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.lp-step { position: relative; padding-left: 46px; }
+.lp-step .sn {
+  position: absolute; left: 0; top: 0; width: 32px; height: 32px; border-radius: 50%;
+  border: 1.5px solid var(--accent); color: var(--accent); display: flex; align-items: center;
+  justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600;
+}
+.lp-step h3 { font-size: 14.5px; font-weight: 600; margin: 0 0 6px; }
+.lp-step p { font-size: 12.5px; color: var(--text-lo); line-height: 1.6; margin: 0; }
+
+.lp-final-cta {
+  max-width: 1200px; margin: 0 auto 70px; padding: 56px 6vw;
+  background: linear-gradient(135deg, var(--shell-2), var(--shell-3));
+  border: 1px solid var(--line); border-radius: 16px; text-align: center;
+}
+.lp-final-cta h2 { font-family: 'Source Serif 4', serif; font-size: 28px; margin: 0 0 10px; }
+.lp-final-cta p { color: var(--text-lo); font-size: 14px; margin: 0 0 26px; }
+
+.lp-footer {
+  max-width: 1200px; margin: 0 auto; padding: 30px 6vw 50px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--line); font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px; color: var(--text-lo);
+}
+
+@media (max-width: 900px) {
+  .lp-hero { flex-direction: column; padding-top: 30px; }
+  .lp-hero-visual { margin-top: 30px; }
+  .lp-h1 { font-size: 34px; }
+  .lp-steps { grid-template-columns: 1fr; }
+}
+
+/* ================= AUTH SCREEN ================= */
+.au-wrap {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px; font-family: 'Inter', sans-serif;
+}
+.au-card {
+  width: 100%; max-width: 380px; background: var(--shell-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 32px 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.au-back {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--text-lo);
+  cursor: pointer; margin-bottom: 18px; display: inline-block;
+}
+.au-back:hover { color: var(--text-hi); }
+.au-tabs { display: flex; gap: 4px; background: var(--shell-3); border-radius: 8px; padding: 4px; margin-bottom: 22px; }
+.au-tab {
+  flex: 1; text-align: center; padding: 8px; border-radius: 6px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--text-lo); font-weight: 500;
+}
+.au-tab.active { background: var(--shell); color: var(--text-hi); }
+.au-title { font-size: 19px; font-weight: 700; margin: 0 0 4px; }
+.au-sub { font-size: 12.5px; color: var(--text-lo); margin: 0 0 22px; line-height: 1.5; }
+.au-field { margin-bottom: 13px; }
+.au-field label {
+  display: block; font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-lo); margin-bottom: 6px;
+}
+.au-field input {
+  width: 100%; background: var(--shell-3); border: 1px solid var(--line); border-radius: 6px;
+  padding: 10px 11px; color: var(--text-hi); font-size: 13.5px;
+}
+.au-field input:focus { outline: none; border-color: var(--accent); }
+.au-note { font-size: 10.5px; color: var(--text-lo); line-height: 1.5; margin-top: 12px; }
+
+/* ================= APP TOPBAR ================= */
+.at-bar {
+  max-width: 1120px; margin: 0 auto 12px; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 2px; font-family: 'IBM Plex Mono', monospace;
+}
+.at-user { font-size: 12px; color: var(--text-lo); }
+.at-user b { color: var(--text-hi); }
+.at-logout {
+  background: transparent; border: 1px solid var(--line); color: var(--text-lo);
+  padding: 7px 13px; border-radius: 6px; font-size: 11.5px; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.at-logout:hover { color: var(--text-hi); border-color: var(--miss); }
+
+/* ================= HISTORY LIST ================= */
+.sl-hist-item {
+  background: var(--shell-3); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 13px; margin-bottom: 10px;
+}
+.hi-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.hi-src {
+  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600;
+  color: var(--accent); letter-spacing: 0.05em; background: rgba(60,138,148,0.12);
+  padding: 2px 7px; border-radius: 4px;
+}
+.hi-date { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-lo); }
+.hi-title { font-size: 13px; font-weight: 500; margin-bottom: 10px; }
+.hi-actions { display: flex; gap: 8px; }
+.hi-actions button { margin-top: 0; flex: 1; padding: 7px; font-size: 11.5px; }
+
+/* ================= ONBOARDING OVERLAY ================= */
+.sl-onboard-overlay {
+  position: fixed; inset: 0; background: rgba(8,10,14,0.72); backdrop-filter: blur(3px);
+  z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.sl-onboard-card {
+  width: 100%; max-width: 380px; background: var(--shell-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 30px 28px; text-align: center;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.5); font-family: 'Inter', sans-serif;
+}
+.oc-eyebrow {
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--hit);
+  letter-spacing: 0.08em; margin-bottom: 12px;
+}
+.sl-onboard-card h2 { font-size: 19px; font-weight: 700; margin: 0 0 6px; color: var(--text-hi); }
+.sl-onboard-card p { font-size: 12.5px; color: var(--text-lo); margin: 0 0 20px; }
+.oc-sub { font-size: 11px; color: var(--text-lo); margin-top: 8px; line-height: 1.5; }
+
+/* ================= EXPORT / DOWNLOAD ================= */
+.sl-stage-inner { width: 100%; max-width: 560px; }
+.sl-dl-bar { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 12px; }
+.sl-dl-btn {
+  background: var(--shell-3); border: 1px solid var(--line); color: var(--text-hi);
+  padding: 8px 14px; border-radius: 6px; font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px; cursor: pointer;
+}
+.sl-dl-btn:hover { border-color: var(--hit); color: var(--hit); }
+
+@media print {
+  .sl-sidebar, .sl-panel, .at-bar, .sl-dl-bar, .sl-flowbar, .sl-onboard-overlay, .lp-page, #sl-screen-landing, #sl-screen-auth { display: none !important; }
+  body, #sl-screen-app, .sl-root, .sl-main, .sl-main-row, .sl-stage, .sl-stage-inner { background: #fff !important; padding: 0 !important; margin: 0 !important; max-height: none !important; overflow: visible !important; display: block !important; box-shadow: none !important; border-radius: 0 !important; }
+  .sl-paper { box-shadow: none !important; max-width: 100% !important; width: 100% !important; }
+}
+</style>
+
+<!-- ================= LANDING SCREEN ================= -->
+<div class="lp-page" id="sl-screen-landing" style="display:none;">
+  <div class="lp-nav">
+    <div class="sl-logo">
+      <div class="sl-logo-mark"></div>
+      <div class="sl-logo-text">SCAN<span>LINE</span></div>
+    </div>
+    <div class="lp-nav-actions">
+      <button class="lp-btn-ghost-sm" id="lp-nav-login">Log in</button>
+      <button class="lp-btn-solid" id="lp-nav-signup">Get Started</button>
+    </div>
+  </div>
+
+  <div class="lp-hero">
+    <div class="lp-hero-copy">
+      <div class="lp-eyebrow"><span class="dot"></span> AI RESUME SCREENER</div>
+      <h1 class="lp-h1">Beat the bots. <em>Land the interview.</em></h1>
+      <p class="lp-sub">Build a CV from scratch, optimize it for any role, and know exactly what the ATS sees — with a score that actually explains itself, and one click to fix what's wrong.</p>
+      <div class="lp-cta-row">
+        <button class="lp-btn-solid-lg" id="lp-hero-signup">Get Started Free →</button>
+        <button class="lp-btn-outline-lg" id="lp-hero-how">See how it works</button>
+      </div>
+      <div class="lp-cta-note">No credit card required · takes about 2 minutes</div>
+    </div>
+    <div class="lp-hero-visual">
+      <div class="lp-mock-paper">
+        <div class="lp-mock-stamp"><div class="sc">92</div><div class="lb">ATS SCORE</div></div>
+        <div class="mn">Amara Okafor</div>
+        <div class="mt">Product Marketing Manager</div>
+        <div class="ml w80"></div>
+        <div class="ml w60"></div>
+        <div class="ml w40"></div>
+        <div style="height:14px"></div>
+        <div class="ml w40" style="background:transparent;height:9px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--ink-soft)">EXPERIENCE</div>
+        <div class="ml w80"><mark>&nbsp;</mark></div>
+        <div class="ml w60"></div>
+        <div class="ml w80"><mark>&nbsp;</mark></div>
+      </div>
+      <div class="lp-mock-tag t1">Keyword found <span class="k">✓ SQL</span></div>
+      <div class="lp-mock-tag t2">Score <span class="k">61 → 92</span></div>
+    </div>
+  </div>
+
+  <div class="lp-section" id="lp-features">
+    <div class="lp-section-head">
+      <h2>One engine, the whole job hunt</h2>
+      <p>Each tool feeds the next — build once, then optimize and re-check for every role you apply to.</p>
+    </div>
+    <div class="lp-features">
+      <div class="lp-feature"><div class="fi">01</div><h3>Build CV</h3><p>Turn rough notes about your work history into a polished, ATS-safe CV — structured the way parsers actually read.</p></div>
+      <div class="lp-feature"><div class="fi">02</div><h3>Optimize</h3><p>Paste or upload an existing CV plus a job post. Bullets get rewritten and reordered around what that role actually needs.</p></div>
+      <div class="lp-feature"><div class="fi">03</div><h3>ATS Scan</h3><p>A real score with a reason behind it — matched keywords, missing ones, and formatting risks, laid out plainly.</p></div>
+      <div class="lp-feature"><div class="fi">04</div><h3>Auto-Fix</h3><p>Already have a CV? Upload it with a job post and get a rewritten, re-scored CV in one click — scan, fix, and re-check all in one step.</p></div>
+      <div class="lp-feature"><div class="fi">05</div><h3>History</h3><p>Every CV you build, optimize, or fix is saved to your account automatically, so nothing gets lost between sessions.</p></div>
+    </div>
+  </div>
+
+  <div class="lp-section" style="padding-top:0;">
+    <div class="lp-section-head">
+      <h2>How it works</h2>
+      <p></p>
+    </div>
+    <div class="lp-steps">
+      <div class="lp-step"><div class="sn">1</div><h3>Build or upload</h3><p>Start from scratch or upload a CV you already have — PDF, Word, or plain text.</p></div>
+      <div class="lp-step"><div class="sn">2</div><h3>Scan against a role</h3><p>Paste the job description. See exactly where your CV matches and where it falls short.</p></div>
+      <div class="lp-step"><div class="sn">3</div><h3>Fix and re-check</h3><p>Apply the fixes with one click, and watch the score move in real time.</p></div>
+    </div>
+  </div>
+
+  <div class="lp-final-cta">
+    <h2>Ready to pass the bots?</h2>
+    <p>It's free to try — build your first CV in the next two minutes.</p>
+    <button class="lp-btn-solid-lg" id="lp-final-signup">Create Free Account →</button>
+  </div>
+
+  <div class="lp-footer">
+    <div>SCANLINE — built to pass the machine, written to land the job.</div>
+    <div>© 2026</div>
+  </div>
+</div>
+
+<!-- ================= AUTH SCREEN ================= -->
+<div id="sl-screen-auth" style="display:none;">
+  <div class="au-wrap">
+    <div class="au-card">
+      <div class="au-back" id="au-back">← Back</div>
+      <div class="au-tabs">
+        <div class="au-tab" id="au-tab-signup" data-mode="signup">Sign up</div>
+        <div class="au-tab" id="au-tab-login" data-mode="login">Log in</div>
+      </div>
+      <div id="au-form-mount"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= APP SCREEN ================= -->
+<div id="sl-screen-app" style="display:none; padding:20px;">
+  <div class="sl-onboard-overlay" id="sl-onboard" style="display:none;">
+    <div class="sl-onboard-card">
+      <div class="oc-eyebrow">BEFORE WE START</div>
+      <h2>Do you already have a CV?</h2>
+      <p>We'll take you straight to the right tool.</p>
+      <button class="sl-btn" id="oc-have-cv">I already have a CV →</button>
+      <div class="oc-sub">Upload it and we'll optimize or ATS-check it — no need to rebuild anything.</div>
+      <button class="sl-btn-ghost" id="oc-scratch" style="margin-top:14px">I'm starting from scratch</button>
+    </div>
+  </div>
+  <div class="at-bar">
+    <div class="at-user">Signed in as <b id="at-user-name">—</b></div>
+    <button class="at-logout" id="at-logout">Log out</button>
+  </div>
+  <div class="sl-root">
+  <div class="sl-sidebar">
+    <div class="sl-logo">
+      <div class="sl-logo-mark"></div>
+      <div class="sl-logo-text">SCAN<span>LINE</span></div>
+    </div>
+    <div class="sl-nav">
+      <div class="sl-nav-item active" data-tab="build"><span class="n">01</span> Build CV</div>
+      <div class="sl-nav-item" data-tab="optimize"><span class="n">02</span> Optimize</div>
+      <div class="sl-nav-item" data-tab="scan"><span class="n">03</span> ATS Scan</div>
+      <div class="sl-nav-item" data-tab="autofix"><span class="n">04</span> Auto-Fix</div>
+      <div class="sl-nav-item" data-tab="history"><span class="n">05</span> History</div>
+    </div>
+    <div class="sl-sidebar-foot">Built to pass the<br/>machine, written to<br/>land the job.</div>
+  </div>
+
+  <div class="sl-main">
+    <div class="sl-flowbar" id="sl-flowbar"></div>
+    <div class="sl-main-row">
+      <div class="sl-panel" id="sl-panel"></div>
+      <div class="sl-stage" id="sl-stage">
+        <div class="sl-p-empty">
+          <div class="big">No document yet</div>
+          <div class="small">Fill in the panel on the left and generate a CV, or paste one in to optimize or scan it.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// Storage shim: replaces the Claude-artifact window.storage API with calls to
+// our own /api/kv serverless function (backed by Vercel KV). The 'session'
+// key is kept purely local (localStorage) since it represents "who is using
+// this browser right now" and should never be a shared/global record.
+window.storage = {
+  async get(key) {
+    if (key === 'session') {
+      const raw = localStorage.getItem('scanline_session');
+      if (!raw) throw new Error('not found');
+      return { key, value: raw, shared: false };
+    }
+    const res = await fetch('/api/kv?key=' + encodeURIComponent(key));
+    if (!res.ok) throw new Error('not found');
+    const data = await res.json();
+    return { key, value: data.value, shared: false };
+  },
+  async set(key, value) {
+    if (key === 'session') {
+      localStorage.setItem('scanline_session', value);
+      return { key, value, shared: false };
+    }
+    const res = await fetch('/api/kv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value })
+    });
+    if (!res.ok) throw new Error('set failed');
+    return { key, value, shared: false };
+  },
+  async delete(key) {
+    if (key === 'session') {
+      localStorage.removeItem('scanline_session');
+      return { key, deleted: true, shared: false };
+    }
+    const res = await fetch('/api/kv?key=' + encodeURIComponent(key), { method: 'DELETE' });
+    if (!res.ok) throw new Error('delete failed');
+    return { key, deleted: true, shared: false };
+  },
+  async list(prefix) {
+    const res = await fetch('/api/kv?prefix=' + encodeURIComponent(prefix || ''));
+    if (!res.ok) throw new Error('list failed');
+    const data = await res.json();
+    return { keys: data.keys || [], prefix, shared: false };
+  }
+};
+</script>
+
+<script>
+(function(){
+  const state = {
+    tab: 'build',
+    cv: null,        // structured cv object
+    rawPasted: '',    // pasted cv text (optimize/scan)
+    jobDesc: '',
+    lastScan: null
+  };
+
+  const panel = document.getElementById('sl-panel');
+  const stage = document.getElementById('sl-stage');
+
+  document.querySelectorAll('.sl-nav-item').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.sl-nav-item').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      state.tab = el.dataset.tab;
+      renderPanel();
+      renderStage();
+    });
+  });
+
+  async function callClaude(promptText, maxTokens) {
+    const token = localStorage.getItem('scanline_token') || '';
+    const response = await fetch("/api/claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ prompt: promptText, maxTokens: maxTokens || 1000 })
+    });
+    if (response.status === 401) throw new Error('Not logged in');
+    if (!response.ok) throw new Error('Claude API request failed');
+    const data = await response.json();
+    return data.text || '';
+  }
+
+  function parseJSON(text) {
+    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+  }
+
+  function cvToPlainText(cv) {
+    if (!cv) return '';
+    let t = `${cv.name}\n${cv.title}\n${cv.contact}\n\nSUMMARY\n${cv.summary}\n\nEXPERIENCE\n`;
+    (cv.experience || []).forEach(e => {
+      t += `${e.role} — ${e.company} (${e.dates})\n`;
+      (e.bullets || []).forEach(b => t += `- ${b}\n`);
+    });
+    t += `\nEDUCATION\n`;
+    (cv.education || []).forEach(ed => t += `${ed.degree}, ${ed.school} (${ed.dates})\n`);
+    t += `\nSKILLS\n${(cv.skills || []).join(', ')}`;
+    return t;
+  }
+
+  // ---------------- FILE UPLOAD / PARSING ----------------
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  async function extractPdfText(arrayBuffer) {
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it => it.str).join(' ') + '\n';
+    }
+    return text.trim();
+  }
+
+  async function extractDocxText(arrayBuffer) {
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return (result.value || '').trim();
+  }
+
+  function wireDropzone(dropId, fileId, labelId, textareaId, errId) {
+    const drop = document.getElementById(dropId);
+    const fileInput = document.getElementById(fileId);
+    const label = document.getElementById(labelId);
+    const errEl = document.getElementById(errId);
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+    ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+    drop.addEventListener('drop', e => {
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    async function handleFile(file) {
+      const name = file.name.toLowerCase();
+      drop.classList.add('busy');
+      label.textContent = `Reading ${file.name}…`;
+      errEl.innerHTML = '';
+      try {
+        let text = '';
+        if (name.endsWith('.pdf')) {
+          const buf = await file.arrayBuffer();
+          text = await extractPdfText(buf);
+        } else if (name.endsWith('.docx')) {
+          const buf = await file.arrayBuffer();
+          text = await extractDocxText(buf);
+        } else if (name.endsWith('.txt')) {
+          text = await file.text();
+        } else {
+          throw new Error('unsupported');
+        }
+        if (!text || text.length < 20) throw new Error('empty');
+        document.getElementById(textareaId).value = text;
+        drop.classList.remove('busy'); drop.classList.add('ok');
+        label.textContent = `✓ ${file.name} loaded`;
+      } catch (e) {
+        drop.classList.remove('busy'); drop.classList.remove('ok');
+        label.textContent = 'Upload CV — PDF, Word, or .txt';
+        if (name.endsWith('.doc')) {
+          errEl.innerHTML = '<div class="sl-error">.doc (old Word format) isn\'t supported in-browser — save as .docx or PDF, or paste the text below.</div>';
+        } else {
+          errEl.innerHTML = '<div class="sl-error">Couldn\'t read that file. Try a different PDF/DOCX export, or paste the text below.</div>';
+        }
+      }
+    }
+  }
+
+  // ---------------- PANEL RENDERING ----------------
+  function renderPanel() {
+    renderFlowbar();
+    if (state.tab === 'build') renderBuildPanel();
+    else if (state.tab === 'optimize') renderOptimizePanel();
+    else if (state.tab === 'scan') renderScanPanel();
+    else if (state.tab === 'autofix') renderAutoFixPanel();
+    else renderHistoryPanel();
+  }
+
+  function switchTab(tabName) {
+    const navItem = document.querySelector(`.sl-nav-item[data-tab="${tabName}"]`);
+    if (navItem) navItem.click();
+  }
+
+  function showNudge(containerId, label, buttonText, targetTab) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = `<div class="sl-next-nudge"><div class="nn-label">${label}</div><button id="${containerId}-btn">${buttonText}</button></div>`;
+    const btn = document.getElementById(containerId + '-btn');
+    if (btn) btn.addEventListener('click', () => switchTab(targetTab));
+  }
+
+  function renderFlowbar() {
+    const fb = document.getElementById('sl-flowbar');
+    if (!fb) return;
+    const stage1Done = !!state.cv;
+    const stage2Done = !!(state.lastScan || state.afResult);
+    const stage3Done = !!state.downloaded;
+    const activeStage = (state.tab === 'build' || state.tab === 'optimize') ? 1 :
+                         (state.tab === 'scan' || state.tab === 'autofix') ? 2 : 3;
+    const cls = (n, done) => n === activeStage ? 'active' : (done ? 'done' : '');
+    const dot = (n, done) => (done && n !== activeStage) ? '✓' : String(n);
+    fb.innerHTML = `
+      <div class="sl-flow-step ${cls(1, stage1Done)}"><div class="sl-flow-dot">${dot(1, stage1Done)}</div><div class="sl-flow-label">Create CV</div></div>
+      <div class="sl-flow-line ${stage1Done ? 'done' : ''}"></div>
+      <div class="sl-flow-step ${cls(2, stage2Done)}"><div class="sl-flow-dot">${dot(2, stage2Done)}</div><div class="sl-flow-label">Check &amp; Fix</div></div>
+      <div class="sl-flow-line ${stage2Done ? 'done' : ''}"></div>
+      <div class="sl-flow-step ${cls(3, stage3Done)}"><div class="sl-flow-dot">${dot(3, stage3Done)}</div><div class="sl-flow-label">Save &amp; Download</div></div>
+    `;
+  }
+
+  function renderBuildPanel() {
+    panel.innerHTML = `
+      <h2>Build a CV from scratch</h2>
+      <p class="sl-sub">Give the basics — the model drafts a clean, ATS-safe structure you can refine.</p>
+      <div class="sl-field"><label>FULL NAME</label><input id="b-name" placeholder="Amara Okafor"/></div>
+      <div class="sl-field"><label>TARGET ROLE</label><input id="b-role" placeholder="Product Marketing Manager"/></div>
+      <div class="sl-field"><label>CONTACT</label><input id="b-contact" placeholder="email · phone · city · linkedin"/></div>
+      <div class="sl-field"><label>WORK HISTORY (one role per line: role, company, dates, key wins)</label>
+        <textarea id="b-work" placeholder="Marketing Lead, Flux Labs, 2022–2026, grew signups 3x, ran launch campaigns"></textarea>
+      </div>
+      <div class="sl-field"><label>EDUCATION</label><textarea id="b-edu" placeholder="BSc Business, University of Lagos, 2018"></textarea></div>
+      <div class="sl-field"><label>SKILLS (comma separated)</label><textarea id="b-skills" placeholder="SEO, campaign strategy, Figma, SQL"></textarea></div>
+      <button class="sl-btn" id="b-go">Generate CV →</button>
+      <div id="b-err"></div>
+      <div id="b-nudge"></div>
+    `;
+    document.getElementById('b-go').addEventListener('click', doBuild);
+  }
+
+  function renderOptimizePanel() {
+    panel.innerHTML = `
+      <h2>Optimize for a role</h2>
+      <p class="sl-sub">Upload an existing CV and a target job description. The model rewrites bullets, reorders sections, and injects the right keywords.</p>
+      <div class="sl-drop" id="o-drop">
+        <input type="file" id="o-file" accept=".pdf,.docx,.txt"/>
+        <div class="dt" id="o-drop-t">Upload CV — PDF, Word, or .txt</div>
+        <div class="ds">or drag and drop</div>
+      </div>
+      <div class="sl-divider"><span>OR PASTE TEXT</span></div>
+      <div class="sl-field"><label>CURRENT CV TEXT</label>
+        <textarea id="o-cv" style="min-height:100px" placeholder="${state.cv ? 'Using CV from Build tab — edit or replace here' : 'Paste your current CV text here'}">${state.cv ? cvToPlainText(state.cv) : ''}</textarea>
+      </div>
+      <div class="sl-field"><label>TARGET JOB DESCRIPTION</label><textarea id="o-jd" style="min-height:120px" placeholder="Paste the job posting text here"></textarea></div>
+      <button class="sl-btn" id="o-go">Optimize CV →</button>
+      <div id="o-err"></div>
+      ${state.lastChanges ? renderChangesList(state.lastChanges) : ''}
+      <div id="o-nudge"></div>
+    `;
+    wireDropzone('o-drop', 'o-file', 'o-drop-t', 'o-cv', 'o-err');
+    document.getElementById('o-go').addEventListener('click', doOptimize);
+  }
+
+  function renderChangesList(changes) {
+    return `<div class="sl-kw-block"><div class="sl-kw-title">WHAT CHANGED</div>
+      <ul class="sl-list">${changes.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul></div>`;
+  }
+
+  function renderScanPanel() {
+    panel.innerHTML = `
+      <h2>ATS compatibility scan</h2>
+      <p class="sl-sub">Upload a CV and a job description. Get a score, matched vs. missing keywords, and concrete fixes.</p>
+      <div class="sl-drop" id="s-drop">
+        <input type="file" id="s-file" accept=".pdf,.docx,.txt"/>
+        <div class="dt" id="s-drop-t">Upload CV — PDF, Word, or .txt</div>
+        <div class="ds">or drag and drop</div>
+      </div>
+      <div class="sl-divider"><span>OR PASTE TEXT</span></div>
+      <div class="sl-field"><label>CV TEXT</label>
+        <textarea id="s-cv" style="min-height:100px" placeholder="${state.cv ? 'Using CV from Build tab — edit or replace here' : 'Paste CV text here'}">${state.cv ? cvToPlainText(state.cv) : ''}</textarea>
+      </div>
+      <div class="sl-field"><label>TARGET JOB DESCRIPTION</label><textarea id="s-jd" style="min-height:120px" placeholder="Paste the job posting text here"></textarea></div>
+      <button class="sl-btn" id="s-go">Run ATS Scan →</button>
+      <div id="s-err"></div>
+      ${state.lastScan ? renderScanResults(state.lastScan) : ''}
+    `;
+    wireDropzone('s-drop', 's-file', 's-drop-t', 's-cv', 's-err');
+    document.getElementById('s-go').addEventListener('click', doScan);
+    const fixBtn = document.getElementById('s-fix-go');
+    if (fixBtn) fixBtn.addEventListener('click', doAutoFix);
+  }
+
+  function renderScanResults(scan) {
+    let banner = '';
+    if (state.beforeScore != null && state.beforeScore !== scan.score) {
+      const delta = scan.score - state.beforeScore;
+      banner = `<div class="sl-kw-block" style="background:rgba(60,138,148,0.1);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-hi)">
+          Score ${state.beforeScore} → <b style="color:var(--hit)">${scan.score}</b> ${delta > 0 ? `(+${delta})` : ''}
+        </div>
+      </div>`;
+      state.beforeScore = null;
+    }
+    return banner + `
+      <div class="sl-kw-block">
+        <div class="sl-kw-title">MATCHED KEYWORDS</div>
+        <div class="sl-kw-chips">${(scan.matched_keywords||[]).map(k => `<span class="sl-chip hit">${escapeHtml(k)}</span>`).join('') || '<span style="color:var(--text-lo);font-size:12px">none found</span>'}</div>
+      </div>
+      <div class="sl-kw-block">
+        <div class="sl-kw-title">MISSING KEYWORDS</div>
+        <div class="sl-kw-chips">${(scan.missing_keywords||[]).map(k => `<span class="sl-chip miss">${escapeHtml(k)}</span>`).join('') || '<span style="color:var(--text-lo);font-size:12px">none</span>'}</div>
+      </div>
+      <div class="sl-kw-block">
+        <div class="sl-kw-title">FIXES</div>
+        <ul class="sl-list">${(scan.fixes||[]).map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+      </div>
+      ${state.lastChanges && state.lastChanges.length ? renderChangesList(state.lastChanges) : ''}
+      <button class="sl-btn" id="s-fix-go" style="background:var(--stamp)">
+        ${scan.score < 80 ? 'Fix My CV Now →' : 'Apply These Fixes →'}
+      </button>
+      <div id="s-fix-err"></div>
+    `;
+  }
+
+  function renderAutoFixPanel() {
+    panel.innerHTML = `
+      <h2>Auto-Fix My CV</h2>
+      <p class="sl-sub">Upload a CV and a target job. We'll scan it, rewrite it to close the gaps, and re-check the score — all in one click.</p>
+      <div class="sl-drop" id="af-drop">
+        <input type="file" id="af-file" accept=".pdf,.docx,.txt"/>
+        <div class="dt" id="af-drop-t">Upload CV — PDF, Word, or .txt</div>
+        <div class="ds">or drag and drop</div>
+      </div>
+      <div class="sl-divider"><span>OR PASTE TEXT</span></div>
+      <div class="sl-field"><label>CV TEXT</label>
+        <textarea id="af-cv" style="min-height:100px" placeholder="${state.cv ? 'Using your current CV — edit or replace here' : 'Paste CV text here'}">${state.cv ? cvToPlainText(state.cv) : ''}</textarea>
+      </div>
+      <div class="sl-field"><label>TARGET JOB DESCRIPTION</label><textarea id="af-jd" style="min-height:120px" placeholder="Paste the job posting text here"></textarea></div>
+      <button class="sl-btn" id="af-go" style="background:var(--stamp)">Fix My CV Now →</button>
+      <div id="af-err"></div>
+      ${state.afResult ? renderAutoFixResults(state.afResult) : ''}
+      <div id="af-nudge"></div>
+    `;
+    wireDropzone('af-drop', 'af-file', 'af-drop-t', 'af-cv', 'af-err');
+    document.getElementById('af-go').addEventListener('click', doAutoFixDirect);
+  }
+
+  function renderAutoFixResults(r) {
+    const delta = r.after.score - r.before.score;
+    return `
+      <div class="sl-kw-block" style="background:rgba(60,138,148,0.1);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-hi)">
+          Score ${r.before.score} → <b style="color:var(--hit)">${r.after.score}</b> ${delta > 0 ? `(+${delta})` : ''}
+        </div>
+      </div>
+      <div class="sl-kw-block">
+        <div class="sl-kw-title">WHAT CHANGED</div>
+        <ul class="sl-list">${(r.changes||[]).map(c => `<li>${escapeHtml(c)}</li>`).join('') || '<li>No major changes needed.</li>'}</ul>
+      </div>
+      <div class="sl-kw-block">
+        <div class="sl-kw-title">STILL MISSING</div>
+        <div class="sl-kw-chips">${(r.after.missing_keywords||[]).map(k => `<span class="sl-chip miss">${escapeHtml(k)}</span>`).join('') || '<span style="color:var(--text-lo);font-size:12px">nothing left — nice.</span>'}</div>
+      </div>
+    `;
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  }
+
+  // ---------------- HISTORY ----------------
+  function currentUser() {
+    return window.scanlineUser || null;
+  }
+
+  async function saveHistory(source, cv) {
+    const user = currentUser();
+    if (!user || !cv) return;
+    try {
+      const key = `cvhistory:${user.email}:${Date.now()}`;
+      const payload = {
+        source, cv,
+        savedAt: new Date().toISOString(),
+        title: cv.title || cv.name || 'Untitled CV'
+      };
+      await window.storage.set(key, JSON.stringify(payload), false);
+    } catch (e) { /* history save is best-effort, don't block the UI */ }
+  }
+
+  async function renderHistoryPanel() {
+    panel.innerHTML = `
+      <h2>Saved CVs</h2>
+      <p class="sl-sub">Every CV you build, optimize, or fix is saved here automatically so you don't lose it.</p>
+      <div id="hist-list"><div style="color:var(--text-lo);font-size:12px">Loading…</div></div>
+    `;
+    const user = currentUser();
+    const listEl = document.getElementById('hist-list');
+    if (!user) { listEl.innerHTML = '<div class="sl-error">Log in to see saved history.</div>'; return; }
+    try {
+      const listRes = await window.storage.list(`cvhistory:${user.email}:`, false);
+      const keys = (listRes && listRes.keys) || [];
+      if (!keys.length) {
+        listEl.innerHTML = '<div style="color:var(--text-lo);font-size:12px;line-height:1.6">No saved CVs yet — build, optimize, or fix one and it\'ll show up here.</div>';
+        return;
+      }
+      const entries = (await Promise.all(keys.map(async k => {
+        try { const r = await window.storage.get(k, false); return { key: k, ...JSON.parse(r.value) }; }
+        catch (e) { return null; }
+      }))).filter(Boolean).sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
+
+      if (!entries.length) {
+        listEl.innerHTML = '<div style="color:var(--text-lo);font-size:12px">No saved CVs yet.</div>';
+        return;
+      }
+
+      listEl.innerHTML = entries.map(e => `
+        <div class="sl-hist-item">
+          <div class="hi-top"><span class="hi-src">${escapeHtml((e.source || '').toUpperCase())}</span><span class="hi-date">${new Date(e.savedAt).toLocaleString()}</span></div>
+          <div class="hi-title">${escapeHtml(e.title || 'Untitled CV')}</div>
+          <div class="hi-actions">
+            <button class="sl-btn-ghost hi-load" data-key="${escapeHtml(e.key)}">Load</button>
+            <button class="sl-btn-ghost hi-del" data-key="${escapeHtml(e.key)}" style="color:var(--miss);border-color:var(--miss)">Delete</button>
+          </div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.hi-load').forEach(b => b.addEventListener('click', () => {
+        const entry = entries.find(e => e.key === b.dataset.key);
+        if (!entry) return;
+        state.cv = entry.cv;
+        state.tab = 'build';
+        state.lastScan = null; state.lastChanges = null;
+        document.querySelectorAll('.sl-nav-item').forEach(x => x.classList.remove('active'));
+        const buildNav = document.querySelector('.sl-nav-item[data-tab="build"]');
+        if (buildNav) buildNav.classList.add('active');
+        renderPanel();
+        renderStage();
+      }));
+
+      document.querySelectorAll('.hi-del').forEach(b => b.addEventListener('click', async () => {
+        try { await window.storage.delete(b.dataset.key, false); } catch (e) {}
+        renderHistoryPanel();
+      }));
+    } catch (e) {
+      listEl.innerHTML = '<div class="sl-error">Could not load saved CVs.</div>';
+    }
+  }
+
+  // ---------------- ACTIONS ----------------
+  async function doBuild() {
+    const btn = document.getElementById('b-go');
+    const name = document.getElementById('b-name').value.trim();
+    const role = document.getElementById('b-role').value.trim();
+    const contact = document.getElementById('b-contact').value.trim();
+    const work = document.getElementById('b-work').value.trim();
+    const edu = document.getElementById('b-edu').value.trim();
+    const skills = document.getElementById('b-skills').value.trim();
+
+    if (!name || !role || !work) {
+      document.getElementById('b-err').innerHTML = '<div class="sl-error">Add at least a name, target role, and work history.</div>';
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Generating…';
+    stage.innerHTML = `<div class="sl-paper scanning"><div class="sl-p-empty"><div class="big">Drafting your CV…</div></div></div>`;
+
+    const prompt = `You are an expert resume writer. Build a concise, ATS-safe CV in strict JSON (no markdown fences, no commentary) matching exactly this schema:
+{"name":"","title":"","contact":"","summary":"2-3 sentence professional summary","experience":[{"role":"","company":"","dates":"","bullets":["3-4 achievement-focused bullets with metrics where plausible"]}],"education":[{"degree":"","school":"","dates":""}],"skills":["8-12 relevant skills"]}
+
+Candidate name: ${name}
+Target role: ${role}
+Contact: ${contact || 'not provided'}
+Raw work history notes: ${work}
+Education notes: ${edu || 'not provided'}
+Skills notes: ${skills || 'infer from work history'}
+
+Rewrite the raw notes into polished, quantified, ATS-friendly bullets. Keep it realistic — do not invent employers or degrees not implied by the notes. Output JSON only.`;
+
+    try {
+      const text = await callClaude(prompt, 1000);
+      const cv = parseJSON(text);
+      state.cv = cv;
+      renderStage();
+      document.getElementById('b-err').innerHTML = '';
+      saveHistory('build', cv);
+      renderFlowbar();
+      showNudge('b-nudge', 'CV CREATED', 'Next: Check & Fix ATS Score →', 'autofix');
+    } catch (e) {
+      document.getElementById('b-err').innerHTML = `<div class="sl-error">Something went wrong generating the CV. Try again.</div>`;
+      renderStage();
+    }
+    btn.disabled = false; btn.textContent = 'Generate CV →';
+  }
+
+  async function doOptimize() {
+    const btn = document.getElementById('o-go');
+    const cvText = document.getElementById('o-cv').value.trim();
+    const jd = document.getElementById('o-jd').value.trim();
+    if (!cvText || !jd) {
+      document.getElementById('o-err').innerHTML = '<div class="sl-error">Add both the CV text and the job description.</div>';
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Optimizing…';
+    stage.innerHTML = `<div class="sl-paper scanning"><div class="sl-p-empty"><div class="big">Rewriting for this role…</div></div></div>`;
+
+    const prompt = `You are an expert resume writer specializing in ATS optimization. Rewrite the CV below to better match the target job description: reorder sections by relevance, rewrite bullets to mirror the job's language and required keywords (without fabricating experience), and tighten the summary.
+
+Return strict JSON only, no markdown fences, matching this schema:
+{"name":"","title":"","contact":"","summary":"","experience":[{"role":"","company":"","dates":"","bullets":[""]}],"education":[{"degree":"","school":"","dates":""}],"skills":[""],"changes":["short bullet describing each meaningful change you made, 4-6 items"]}
+
+CURRENT CV:
+${cvText}
+
+TARGET JOB DESCRIPTION:
+${jd}
+
+Output JSON only.`;
+
+    try {
+      const text = await callClaude(prompt, 1000);
+      const result = parseJSON(text);
+      state.cv = result;
+      state.lastChanges = result.changes || [];
+      renderStage();
+      renderPanel();
+      saveHistory('optimize', result);
+      showNudge('o-nudge', 'CV OPTIMIZED', 'Next: Check & Fix ATS Score →', 'autofix');
+    } catch (e) {
+      document.getElementById('o-err').innerHTML = `<div class="sl-error">Something went wrong optimizing the CV. Try again.</div>`;
+      renderStage();
+    }
+    btn.disabled = false; btn.textContent = 'Optimize CV →';
+  }
+
+  async function doScan(fromFix) {
+    const btn = document.getElementById('s-go');
+    const cvText = document.getElementById('s-cv').value.trim();
+    const jd = document.getElementById('s-jd').value.trim();
+    if (!cvText || !jd) {
+      document.getElementById('s-err').innerHTML = '<div class="sl-error">Add both the CV text and the job description.</div>';
+      return;
+    }
+    if (!fromFix) { state.lastChanges = null; state.beforeScore = null; }
+    btn.disabled = true; btn.textContent = 'Scanning…';
+    state.scanCvText = cvText;
+    stage.innerHTML = `<div class="sl-paper scanning">${paperBodyFromText(cvText)}</div>`;
+
+    const prompt = `You are an ATS (Applicant Tracking System) simulator and resume auditor. Compare the CV text against the job description and produce a realistic ATS compatibility assessment.
+
+Return strict JSON only, no markdown fences, matching this schema:
+{"score": <integer 0-100>, "matched_keywords": ["keywords/phrases from the job description that appear in the CV, 5-12 items"], "missing_keywords": ["important keywords/phrases from the job description absent from the CV, 5-10 items"], "formatting_issues": ["any ATS-parsing risks noticed, e.g. tables, headers, contact info placement"], "fixes": ["4-6 concrete, specific actions to raise the score"]}
+
+CV TEXT:
+${cvText}
+
+JOB DESCRIPTION:
+${jd}
+
+Score conservatively based on keyword coverage, section clarity, and quantified achievements. Output JSON only.`;
+
+    try {
+      const text = await callClaude(prompt, 1000);
+      const scan = parseJSON(text);
+      state.lastScan = scan;
+      renderStage();
+      renderPanel();
+    } catch (e) {
+      document.getElementById('s-err').innerHTML = `<div class="sl-error">Something went wrong running the scan. Try again.</div>`;
+      renderStage();
+    }
+    btn.disabled = false; btn.textContent = 'Run ATS Scan →';
+  }
+
+  async function doAutoFix() {
+    const btn = document.getElementById('s-fix-go');
+    const cvText = document.getElementById('s-cv').value.trim();
+    const jd = document.getElementById('s-jd').value.trim();
+    const scan = state.lastScan;
+    if (!cvText || !jd || !scan) return;
+    btn.disabled = true; btn.textContent = 'Fixing…';
+    document.getElementById('s-fix-err').innerHTML = '';
+    stage.innerHTML = `<div class="sl-paper scanning"><div class="sl-p-empty"><div class="big">Rewriting to close the gaps…</div><div class="small">Weaving in missing keywords, fixing formatting, tightening weak bullets.</div></div></div>`;
+    state.beforeScore = scan.score;
+
+    const prompt = `You are an expert resume writer fixing a CV so it passes ATS screening for a specific job. Use the audit below to rewrite the CV: naturally weave in the missing keywords where truthful to the candidate's background, resolve the formatting issues, and address every item in the fixes list. Do not fabricate employers, titles, or experience — only integrate keywords where they genuinely fit.
+
+Return strict JSON only, no markdown fences, matching this schema:
+{"name":"","title":"","contact":"","summary":"","experience":[{"role":"","company":"","dates":"","bullets":[""]}],"education":[{"degree":"","school":"","dates":""}],"skills":[""],"changes":["short description of each fix applied, 4-6 items"]}
+
+ORIGINAL CV:
+${cvText}
+
+JOB DESCRIPTION:
+${jd}
+
+AUDIT — MISSING KEYWORDS: ${(scan.missing_keywords||[]).join(', ') || 'none'}
+AUDIT — FORMATTING ISSUES: ${(scan.formatting_issues||[]).join(', ') || 'none'}
+AUDIT — FIXES NEEDED: ${(scan.fixes||[]).join(', ') || 'none'}
+
+Output JSON only.`;
+
+    try {
+      const text = await callClaude(prompt, 1000);
+      const result = parseJSON(text);
+      state.cv = result;
+      state.lastChanges = result.changes || [];
+      const newText = cvToPlainText(result);
+      const cvBox = document.getElementById('s-cv');
+      if (cvBox) cvBox.value = newText;
+      state.scanCvText = newText;
+      saveHistory('fix', result);
+      await doScan(true); // re-scan the fixed CV so the person sees the score move
+    } catch (e) {
+      document.getElementById('s-fix-err').innerHTML = `<div class="sl-error">Something went wrong fixing the CV. Try again.</div>`;
+      renderStage();
+      btn.disabled = false; btn.textContent = 'Fix My CV Now →';
+    }
+  }
+
+  // ---------------- STANDALONE AUTO-FIX (dedicated tab) ----------------
+  async function runScanCall(cvText, jd) {
+    const prompt = `You are an ATS (Applicant Tracking System) simulator and resume auditor. Compare the CV text against the job description and produce a realistic ATS compatibility assessment.
+
+Return strict JSON only, no markdown fences, matching this schema:
+{"score": <integer 0-100>, "matched_keywords": ["keywords/phrases from the job description that appear in the CV, 5-12 items"], "missing_keywords": ["important keywords/phrases from the job description absent from the CV, 5-10 items"], "formatting_issues": ["any ATS-parsing risks noticed, e.g. tables, headers, contact info placement"], "fixes": ["4-6 concrete, specific actions to raise the score"]}
+
+CV TEXT:
+${cvText}
+
+JOB DESCRIPTION:
+${jd}
+
+Score conservatively based on keyword coverage, section clarity, and quantified achievements. Output JSON only.`;
+    const text = await callClaude(prompt, 1000);
+    return parseJSON(text);
+  }
+
+  async function runFixCall(cvText, jd, scan) {
+    const prompt = `You are an expert resume writer fixing a CV so it passes ATS screening for a specific job. Use the audit below to rewrite the CV: naturally weave in the missing keywords where truthful to the candidate's background, resolve the formatting issues, and address every item in the fixes list. Do not fabricate employers, titles, or experience — only integrate keywords where they genuinely fit.
+
+Return strict JSON only, no markdown fences, matching this schema:
+{"name":"","title":"","contact":"","summary":"","experience":[{"role":"","company":"","dates":"","bullets":[""]}],"education":[{"degree":"","school":"","dates":""}],"skills":[""],"changes":["short description of each fix applied, 4-6 items"]}
+
+ORIGINAL CV:
+${cvText}
+
+JOB DESCRIPTION:
+${jd}
+
+AUDIT — MISSING KEYWORDS: ${(scan.missing_keywords||[]).join(', ') || 'none'}
+AUDIT — FORMATTING ISSUES: ${(scan.formatting_issues||[]).join(', ') || 'none'}
+AUDIT — FIXES NEEDED: ${(scan.fixes||[]).join(', ') || 'none'}
+
+Output JSON only.`;
+    const text = await callClaude(prompt, 1000);
+    return parseJSON(text);
+  }
+
+  async function doAutoFixDirect() {
+    const btn = document.getElementById('af-go');
+    const cvText = document.getElementById('af-cv').value.trim();
+    const jd = document.getElementById('af-jd').value.trim();
+    const errEl = document.getElementById('af-err');
+    errEl.innerHTML = '';
+    if (!cvText || !jd) {
+      errEl.innerHTML = '<div class="sl-error">Add both the CV text (or upload a file) and the job description.</div>';
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Scanning…';
+    state.tab = 'autofix';
+    stage.innerHTML = `<div class="sl-paper scanning"><div class="sl-p-empty"><div class="big">Scanning the original CV…</div><div class="small">Checking keyword coverage and formatting first.</div></div></div>`;
+
+    try {
+      const beforeScan = await runScanCall(cvText, jd);
+      btn.textContent = 'Fixing…';
+      stage.innerHTML = `<div class="sl-paper scanning"><div class="sl-p-empty"><div class="big">Rewriting to close the gaps…</div><div class="small">Weaving in missing keywords, fixing formatting, tightening weak bullets.</div></div></div>`;
+
+      const fixed = await runFixCall(cvText, jd, beforeScan);
+      const newText = cvToPlainText(fixed);
+
+      btn.textContent = 'Re-checking…';
+      stage.innerHTML = `<div class="sl-paper scanning"><div class="sl-p-empty"><div class="big">Confirming the improvement…</div></div></div>`;
+      const afterScan = await runScanCall(newText, jd);
+
+      state.cv = fixed;
+      state.afResult = { before: beforeScan, after: afterScan, changes: fixed.changes || [] };
+      saveHistory('fix', fixed);
+      renderStage();
+      renderPanel();
+      showNudge('af-nudge', 'FIXED & RE-SCORED — DOWNLOAD BUTTONS ABOVE THE PAPER', 'View saved copy in History →', 'history');
+    } catch (e) {
+      errEl.innerHTML = `<div class="sl-error">Something went wrong fixing the CV. Try again.</div>`;
+      renderStage();
+    }
+    btn.disabled = false; btn.textContent = 'Fix My CV Now →';
+  }
+
+  // ---------------- STAGE RENDERING ----------------
+  function paperBodyFromText(text) {
+    return `<div class="sl-p-empty" style="height:auto;padding:20px 0;text-align:left;align-items:flex-start">
+      <div class="small" style="white-space:pre-wrap;font-family:'Source Serif 4',serif;font-size:12.5px;line-height:1.6;color:var(--ink);max-width:100%">${escapeHtml(text)}</div>
+    </div>`;
+  }
+
+  function highlightKeywords(text, keywords) {
+    let html = escapeHtml(text);
+    (keywords || []).forEach(kw => {
+      if (!kw || kw.length < 2) return;
+      const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp('(' + esc + ')', 'gi');
+      html = html.replace(re, '<mark class="sl-hit">$1</mark>');
+    });
+    return html;
+  }
+
+  function renderStage() {
+    if (state.tab === 'scan' && state.lastScan) {
+      const kws = state.lastScan.matched_keywords || [];
+      const bodyHtml = highlightKeywords(state.scanCvText || '', kws);
+      stage.innerHTML = `
+        <div class="sl-paper">
+          <div class="sl-stamp"><div class="sc">${state.lastScan.score}</div><div class="lb">ATS SCORE</div></div>
+          <div style="white-space:pre-wrap;font-family:'Source Serif 4',serif;font-size:12.5px;line-height:1.7;color:var(--ink);max-width:82%">${bodyHtml}</div>
+        </div>
+      `;
+      return;
+    }
+
+    if (state.cv && state.cv.name) {
+      stage.innerHTML = `
+        <div class="sl-stage-inner">
+          <div class="sl-dl-bar">
+            <button class="sl-dl-btn" id="dl-pdf-btn">⬇ Download PDF</button>
+            <button class="sl-dl-btn" id="dl-doc-btn">⬇ Download Word</button>
+          </div>
+          <div class="sl-paper">${cvPaperHtml(state.cv)}</div>
+        </div>
+      `;
+      const pdfBtn = document.getElementById('dl-pdf-btn');
+      const docBtn = document.getElementById('dl-doc-btn');
+      if (pdfBtn) pdfBtn.addEventListener('click', () => downloadPdf());
+      if (docBtn) docBtn.addEventListener('click', () => downloadWord(state.cv));
+      return;
+    }
+
+    stage.innerHTML = `
+      <div class="sl-paper">
+        <div class="sl-p-empty">
+          <div class="big">No document yet</div>
+          <div class="small">${
+            state.tab === 'build' ? 'Fill in the panel on the left and generate a CV.' :
+            state.tab === 'optimize' ? 'Paste a CV and job description, then optimize.' :
+            state.tab === 'scan' ? 'Paste a CV and job description, then run a scan.' :
+            state.tab === 'autofix' ? 'Upload or paste a CV and a job description, then fix it in one click.' :
+            'Pick a saved CV from the left to load it here.'
+          }</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function cvPaperHtml(cv) {
+    return `
+      <div class="sl-p-name">${escapeHtml(cv.name || '')}</div>
+      <div class="sl-p-title">${escapeHtml(cv.title || '')}</div>
+      <div class="sl-p-contact">${escapeHtml(cv.contact || '')}</div>
+      <hr class="sl-p-hr"/>
+      <div class="sl-p-h">Summary</div>
+      <p class="sl-p-summary">${escapeHtml(cv.summary || '')}</p>
+      <div class="sl-p-h" style="margin-top:18px">Experience</div>
+      ${(cv.experience||[]).map(e => `
+        <div class="sl-p-role"><span>${escapeHtml(e.role||'')}</span><span class="sl-p-role-meta">${escapeHtml(e.dates||'')}</span></div>
+        <div class="sl-p-company">${escapeHtml(e.company||'')}</div>
+        <ul class="sl-p-bullets">${(e.bullets||[]).map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>
+      `).join('')}
+      <div class="sl-p-h" style="margin-top:18px">Education</div>
+      ${(cv.education||[]).map(ed => `<div class="sl-p-edu"><b>${escapeHtml(ed.degree||'')}</b>, ${escapeHtml(ed.school||'')} — ${escapeHtml(ed.dates||'')}</div>`).join('')}
+      <div class="sl-p-h" style="margin-top:18px">Skills</div>
+      <div class="sl-p-skills">${(cv.skills||[]).map(s => `<span class="sl-p-skill">${escapeHtml(s)}</span>`).join('')}</div>
+    `;
+  }
+
+  // ---------------- EXPORT ----------------
+  function sanitizeFilename(name) {
+    return (name || 'CV').trim().replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'CV';
+  }
+
+  function downloadPdf() {
+    state.downloaded = true;
+    renderFlowbar();
+    window.print();
+  }
+
+  function buildWordHtml(cv) {
+    const e = escapeHtml;
+    const body = `
+      <div style="font-family:Georgia,serif;color:#201C16;">
+        <h1 style="font-size:22pt;margin:0 0 2px;">${e(cv.name || '')}</h1>
+        <div style="font-family:Arial,sans-serif;font-size:10.5pt;color:#3C8A94;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${e(cv.title || '')}</div>
+        <div style="font-family:Arial,sans-serif;font-size:10pt;color:#555;margin-bottom:16px;">${e(cv.contact || '')}</div>
+        <hr style="border:none;border-top:1px solid #ccc;margin:14px 0;"/>
+        <h3 style="font-family:Arial,sans-serif;font-size:10.5pt;text-transform:uppercase;letter-spacing:1px;color:#666;">Summary</h3>
+        <p style="font-size:11pt;line-height:1.5;">${e(cv.summary || '')}</p>
+        <h3 style="font-family:Arial,sans-serif;font-size:10.5pt;text-transform:uppercase;letter-spacing:1px;color:#666;margin-top:18px;">Experience</h3>
+        ${(cv.experience || []).map(ex => `
+          <p style="margin-bottom:2px;font-size:11.5pt;"><b>${e(ex.role || '')}</b> — ${e(ex.company || '')}
+            <span style="float:right;font-family:Arial,sans-serif;font-size:10pt;color:#555;">${e(ex.dates || '')}</span></p>
+          <ul style="margin-top:2px;">${(ex.bullets || []).map(b => `<li style="font-size:11pt;line-height:1.5;">${e(b)}</li>`).join('')}</ul>
+        `).join('')}
+        <h3 style="font-family:Arial,sans-serif;font-size:10.5pt;text-transform:uppercase;letter-spacing:1px;color:#666;margin-top:18px;">Education</h3>
+        ${(cv.education || []).map(ed => `<p style="font-size:11pt;"><b>${e(ed.degree || '')}</b>, ${e(ed.school || '')} — ${e(ed.dates || '')}</p>`).join('')}
+        <h3 style="font-family:Arial,sans-serif;font-size:10.5pt;text-transform:uppercase;letter-spacing:1px;color:#666;margin-top:18px;">Skills</h3>
+        <p style="font-size:11pt;">${e((cv.skills || []).join(', '))}</p>
+      </div>
+    `;
+    return `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><meta charset="utf-8"><title>${e(cv.name || 'CV')}</title></head>
+<body>${body}</body></html>`;
+  }
+
+  function downloadWord(cv) {
+    const html = buildWordHtml(cv);
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = sanitizeFilename(cv.name) + '_CV.doc';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    state.downloaded = true;
+    renderFlowbar();
+  }
+
+  renderPanel();
+  renderStage();
+})();
+</script>
+
+<script>
+(function(){
+  const scrLanding = document.getElementById('sl-screen-landing');
+  const scrAuth = document.getElementById('sl-screen-auth');
+  const scrApp = document.getElementById('sl-screen-app');
+  let authMode = 'signup';
+
+  function showScreen(name) {
+    scrLanding.style.display = name === 'landing' ? 'block' : 'none';
+    scrAuth.style.display = name === 'auth' ? 'block' : 'none';
+    scrApp.style.display = name === 'app' ? 'block' : 'none';
+    window.scrollTo(0, 0);
+  }
+
+  async function hashPassword(pw) {
+    const enc = new TextEncoder().encode(pw);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function genToken() {
+    const arr = new Uint8Array(24);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function accountKey(email) {
+    return 'account:' + email.trim().toLowerCase();
+  }
+
+  function renderAuthForm() {
+    document.querySelectorAll('.au-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === authMode));
+    const mount = document.getElementById('au-form-mount');
+    if (authMode === 'signup') {
+      mount.innerHTML = `
+        <div class="au-title">Create your account</div>
+        <div class="au-sub">Free to start — build, optimize, and scan your first CV in minutes.</div>
+        <div class="au-field"><label>FULL NAME</label><input id="au-name" placeholder="Amara Okafor"/></div>
+        <div class="au-field"><label>EMAIL</label><input id="au-email" type="email" placeholder="you@email.com"/></div>
+        <div class="au-field"><label>PASSWORD</label><input id="au-pass" type="password" placeholder="At least 6 characters"/></div>
+        <button class="sl-btn" id="au-submit">Create Account →</button>
+        <div id="au-err"></div>
+        <div class="au-note">Account data is stored so you can log back in on this device. This is a prototype — don't reuse a password you use elsewhere.</div>
+      `;
+      document.getElementById('au-submit').addEventListener('click', doSignup);
+    } else {
+      mount.innerHTML = `
+        <div class="au-title">Welcome back</div>
+        <div class="au-sub">Log in to pick up where you left off.</div>
+        <div class="au-field"><label>EMAIL</label><input id="au-email" type="email" placeholder="you@email.com"/></div>
+        <div class="au-field"><label>PASSWORD</label><input id="au-pass" type="password" placeholder="Your password"/></div>
+        <button class="sl-btn" id="au-submit">Log In →</button>
+        <div id="au-err"></div>
+      `;
+      document.getElementById('au-submit').addEventListener('click', doLogin);
+    }
+  }
+
+  async function doSignup() {
+    const btn = document.getElementById('au-submit');
+    const name = document.getElementById('au-name').value.trim();
+    const email = document.getElementById('au-email').value.trim();
+    const pass = document.getElementById('au-pass').value;
+    const err = document.getElementById('au-err');
+    err.innerHTML = '';
+    if (!name || !email || !pass) { err.innerHTML = '<div class="sl-error">Fill in every field.</div>'; return; }
+    if (!email.includes('@')) { err.innerHTML = '<div class="sl-error">Enter a valid email.</div>'; return; }
+    if (pass.length < 6) { err.innerHTML = '<div class="sl-error">Password needs at least 6 characters.</div>'; return; }
+    btn.disabled = true; btn.textContent = 'Creating…';
+    try {
+      const key = accountKey(email);
+      let exists = null;
+      try { exists = await window.storage.get(key, true); } catch (e) { exists = null; }
+      if (exists) {
+        err.innerHTML = '<div class="sl-error">An account already exists for that email — try logging in instead.</div>';
+        btn.disabled = false; btn.textContent = 'Create Account →';
+        return;
+      }
+      const passwordHash = await hashPassword(pass);
+      await window.storage.set(key, JSON.stringify({ name, email, passwordHash }), true);
+      await window.storage.set('session', JSON.stringify({ name, email }), false);
+      const token = genToken();
+      await window.storage.set(`authtoken:${token}`, JSON.stringify({ name, email }), false);
+      localStorage.setItem('scanline_token', token);
+      enterApp(name, email);
+    } catch (e) {
+      err.innerHTML = '<div class="sl-error">Something went wrong creating your account. Try again.</div>';
+      btn.disabled = false; btn.textContent = 'Create Account →';
+    }
+  }
+
+  async function doLogin() {
+    const btn = document.getElementById('au-submit');
+    const email = document.getElementById('au-email').value.trim();
+    const pass = document.getElementById('au-pass').value;
+    const err = document.getElementById('au-err');
+    err.innerHTML = '';
+    if (!email || !pass) { err.innerHTML = '<div class="sl-error">Enter your email and password.</div>'; return; }
+    btn.disabled = true; btn.textContent = 'Logging in…';
+    try {
+      const key = accountKey(email);
+      let record = null;
+      try {
+        const res = await window.storage.get(key, true);
+        record = res ? JSON.parse(res.value) : null;
+      } catch (e) { record = null; }
+      if (!record) {
+        err.innerHTML = '<div class="sl-error">No account found for that email. Try signing up.</div>';
+        btn.disabled = false; btn.textContent = 'Log In →';
+        return;
+      }
+      const passwordHash = await hashPassword(pass);
+      if (passwordHash !== record.passwordHash) {
+        err.innerHTML = '<div class="sl-error">Incorrect password.</div>';
+        btn.disabled = false; btn.textContent = 'Log In →';
+        return;
+      }
+      await window.storage.set('session', JSON.stringify({ name: record.name, email: record.email }), false);
+      const token = genToken();
+      await window.storage.set(`authtoken:${token}`, JSON.stringify({ name: record.name, email: record.email }), false);
+      localStorage.setItem('scanline_token', token);
+      enterApp(record.name, record.email);
+    } catch (e) {
+      err.innerHTML = '<div class="sl-error">Something went wrong logging in. Try again.</div>';
+      btn.disabled = false; btn.textContent = 'Log In →';
+    }
+  }
+
+  async function enterApp(name, email) {
+    window.scanlineUser = { name, email };
+    document.getElementById('at-user-name').textContent = name;
+    showScreen('app');
+    let hasHistory = false;
+    try {
+      const listRes = await window.storage.list(`cvhistory:${email}:`, false);
+      hasHistory = !!(listRes && listRes.keys && listRes.keys.length);
+    } catch (e) { hasHistory = false; }
+    if (hasHistory) {
+      goToTab('history');
+    } else {
+      document.getElementById('sl-onboard').style.display = 'flex';
+    }
+  }
+
+  function goToTab(tabName) {
+    const navItem = document.querySelector(`.sl-nav-item[data-tab="${tabName}"]`);
+    if (navItem) navItem.click();
+  }
+
+  document.getElementById('oc-have-cv').addEventListener('click', () => {
+    document.getElementById('sl-onboard').style.display = 'none';
+    goToTab('autofix');
+    const dropzone = document.getElementById('af-drop');
+    if (dropzone) dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  document.getElementById('oc-scratch').addEventListener('click', () => {
+    document.getElementById('sl-onboard').style.display = 'none';
+    goToTab('build');
+  });
+
+  async function doLogout() {
+    const token = localStorage.getItem('scanline_token');
+    try { await window.storage.delete('session', false); } catch (e) {}
+    if (token) {
+      try { await window.storage.delete(`authtoken:${token}`, false); } catch (e) {}
+      localStorage.removeItem('scanline_token');
+    }
+    showScreen('landing');
+  }
+
+  function openAuth(mode) {
+    authMode = mode;
+    renderAuthForm();
+    showScreen('auth');
+  }
+
+  document.getElementById('lp-nav-login').addEventListener('click', () => openAuth('login'));
+  document.getElementById('lp-nav-signup').addEventListener('click', () => openAuth('signup'));
+  document.getElementById('lp-hero-signup').addEventListener('click', () => openAuth('signup'));
+  document.getElementById('lp-final-signup').addEventListener('click', () => openAuth('signup'));
+  document.getElementById('lp-hero-how').addEventListener('click', () => {
+    document.getElementById('lp-features').scrollIntoView({ behavior: 'smooth' });
+  });
+  document.getElementById('au-back').addEventListener('click', () => showScreen('landing'));
+  document.getElementById('au-tab-signup').addEventListener('click', () => openAuth('signup'));
+  document.getElementById('au-tab-login').addEventListener('click', () => openAuth('login'));
+  document.getElementById('at-logout').addEventListener('click', doLogout);
+
+  // ---- check for existing session on load ----
+  (async function init() {
+    try {
+      const res = await window.storage.get('session', false);
+      if (res && res.value) {
+        const session = JSON.parse(res.value);
+        if (session && session.name) { enterApp(session.name, session.email); return; }
+      }
+    } catch (e) { /* no session yet */ }
+    showScreen('landing');
+  })();
+})();
+</script>
+</body>
+</html>
